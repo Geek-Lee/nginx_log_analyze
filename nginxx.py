@@ -9,6 +9,7 @@ from sqlalchemy import create_engine
 import io_tosql
 from apscheduler.schedulers.background import BackgroundScheduler
 import time
+import datetime
 import os
 
 
@@ -29,14 +30,17 @@ def ngx(dirname = dirname):
     # dirname = r'C:\Users\K\Desktop\nginx_log_analyze'
     files = os.listdir(dirname)
     fullfilepath_list = [name for name in files if name.endswith('.log')]
+
+    print("____________________________________!________________________________________________")
     for fullfilepath in fullfilepath_list:
         df = pd.DataFrame()
+        print(fullfilepath)
         try:
             with fileinput.input(fullfilepath) as f:
                 for line in f:
-                    remote_addr, _, _, time_local, request_method, request_url, _, status, request_body, \
+                    remote_addr, _, _, local_time, request_method, request_url, _, status, request_body, \
                     body_bytes_sent, http_referer, *http_user_agent, hf1, hf2, _, _ = re.split('\s', line)
-                    time_local = time_local.lstrip('[').rstrip(']').replace('T', ' ')[:-6]
+                    local_time = datetime.datetime.strptime(local_time.lstrip('[').rstrip(']').replace('T', ' ')[:-6], '%Y-%m-%d %H:%M:%S')
                     request_method = request_method if request_method == '-' else request_method.lstrip('"')
                     status = status if status == '-' else int(status)
                     #request_body = request_body if request_body == '-' else request_body.lstrip('[').rstrip(']').replace(r'\x22', '')
@@ -47,24 +51,25 @@ def ngx(dirname = dirname):
                     http_referer = http_referer if http_referer == '-' else http_referer.strip('"')
                     http_user_agent = ' '.join(http_user_agent)
                     http_x_forwarded_for = (hf1+' '+hf2).rstrip('"')
-                    one_line_df = pd.DataFrame({"remote_addr": [remote_addr], "request_method": [request_method],
+                    one_line_df = pd.DataFrame({"remote_addr": [remote_addr], "request_method": [request_method], "local_time": [local_time],
                                                 "request_url": [request_url], "status": [status], "request_body": [request_body],
                                                 "body_bytes_sent": [body_bytes_sent], "http_referer": [http_referer],
                                                 "http_user_agent": [http_user_agent], "http_x_forwarded_for": [http_x_forwarded_for],
                                                 "fund_id": [fund_id], "user_id": [user_id]
                                                 })
-                    print("line")
                     df = pd.concat([df, one_line_df])
-                    if len(df) == 1000:
+                    print("长度为：" + str(len(df)))
+                    if len(df) >= 1000:
                         io_tosql.to_sql("easy_log", engine_user_info, df)
                         df = pd.DataFrame()
-                io_tosql.to_sql("easy_log", engine_user_info, df)
         except:
             print("except")
+        io_tosql.to_sql("easy_log", engine_user_info, df)  # 不到一千的也放入数据库，dataframe在循环下一个的文件时清空
+        #放入excel的用法
         # writer = pd.ExcelWriter(r'C:\Users\K\Desktop\output.xlsx')
         # df.to_excel(writer, sheet_name='Sheet1', index=False)
         # writer.save()
-        print(df)
+        # print(df)
 
 if __name__ == '__main__':
     scheduler = BackgroundScheduler()
